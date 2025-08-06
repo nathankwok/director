@@ -2,34 +2,46 @@ import { AppError, ErrorCode } from "@director.run/utilities/error";
 import { getLogger } from "@director.run/utilities/logger";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { McpError } from "@modelcontextprotocol/sdk/types.js";
-import { AbstractClient, type SerializedClient } from "./abstract-client";
+import { AbstractClient, type AbstractClientParams } from "./abstract-client";
 
 const logger = getLogger("client/stdio");
+
+export type StdioClientParams = AbstractClientParams & {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+};
 
 export class StdioClient extends AbstractClient {
   public readonly command: string;
   public readonly args: string[];
   public readonly env?: Record<string, string>;
 
-  constructor(params: {
-    name: string;
-    command: string;
-    args: string[];
-    env?: Record<string, string>;
-  }) {
-    super(params.name);
+  constructor(params: StdioClientParams) {
+    super({
+      name: params.name,
+      source: params.source,
+      toolPrefix: params.toolPrefix,
+      disabledTools: params.disabledTools,
+      disabled: params.disabled,
+    });
     this.command = params.command;
     this.args = params.args;
     this.env = params.env;
   }
 
   public async connectToTarget({ throwOnError }: { throwOnError: boolean }) {
+    if (this._disabled) {
+      this.status = "disconnected";
+      return false;
+    }
+
     try {
       await this.connect(
         new StdioClientTransport({
           command: this.command,
           args: this.args,
-          env: this.env,
+          env: { ...this.env, ...(process.env as Record<string, string>) },
         }),
       );
       this.status = "connected";
@@ -66,17 +78,6 @@ export class StdioClient extends AbstractClient {
     });
     await client.connectToTarget({ throwOnError: true });
     return client;
-  }
-
-  public toPlainObject(): SerializedClient {
-    return {
-      name: this.name,
-      status: this.status,
-      lastConnectedAt: this.lastConnectedAt,
-      lastErrorMessage: this.lastErrorMessage,
-      command: [this.command, ...(this.args ?? [])].join(" "),
-      type: "stdio",
-    };
   }
 }
 

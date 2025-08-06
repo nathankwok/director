@@ -13,6 +13,7 @@ import { joinURL } from "@director.run/utilities/url";
 import { gatewayClient } from "../client";
 import { env } from "../env";
 import { registerAddCommand } from "./core/add";
+import { registerAuthCommand } from "./core/authenticate";
 import { registerConnectCommand } from "./core/connect";
 import { registerDebugCommands } from "./core/debug";
 import { registerEnvCommand } from "./core/env";
@@ -22,6 +23,7 @@ import { registerRemoveCommand } from "./core/remove";
 import { registerServeCommand } from "./core/serve";
 import { registerStatusCommand } from "./core/status";
 import { registerStudioCommand } from "./core/studio";
+import { registerUpdateCommand } from "./core/update";
 
 export function registerCoreCommands(program: DirectorCommand): void {
   registerQuickstartCommand(program);
@@ -55,6 +57,7 @@ export function registerCoreCommands(program: DirectorCommand): void {
     );
 
   registerGetCommand(program);
+  registerAuthCommand(program);
 
   program
     .command("create <name>")
@@ -108,6 +111,7 @@ export function registerCoreCommands(program: DirectorCommand): void {
 
   registerAddCommand(program);
   registerRemoveCommand(program);
+  registerUpdateCommand(program);
 
   program
     .command("http2stdio <url>")

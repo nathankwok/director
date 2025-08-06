@@ -105,21 +105,34 @@ export const proxyTargetAttributesSchema = z.object({
   name: slugStringSchema,
   transport: proxyTransport,
   source: ProxyTargetSourceSchema.optional(),
+  toolPrefix: z.string().trim().optional(),
+  disabledTools: z.array(requiredStringSchema).optional(),
+  disabled: z.boolean().optional(),
 });
 
 export type ProxyTargetAttributes = z.infer<typeof proxyTargetAttributesSchema>;
 
+export const promptSchema = z.object({
+  name: requiredStringSchema,
+  title: requiredStringSchema,
+  description: z.string().trim().optional(),
+  body: requiredStringSchema,
+});
+
+export type PromptAttributes = z.infer<typeof promptSchema>;
+
 export const proxyServerAttributesSchema = z.object({
   id: requiredStringSchema,
   name: requiredStringSchema,
-  description: optionalStringSchema,
-  addToolPrefix: z.boolean().default(false).optional(),
+  description: z.string().trim().optional(),
+  prompts: z.array(promptSchema).optional(),
   servers: z.array(proxyTargetAttributesSchema),
 });
 
 export type ProxyServerAttributes = z.infer<typeof proxyServerAttributesSchema>;
 
 export const databaseAttributesSchema = z.object({
+  version: z.string().optional(),
   proxies: z.array(proxyServerAttributesSchema),
 });
 

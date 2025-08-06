@@ -8,17 +8,14 @@ import { toast } from "@/components/ui/toast";
 import { useRegistryQuery } from "@/hooks/use-registry-query";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { trpc } from "@/trpc/client";
-import type {
-  ProxyServerAttributes,
-  RegistryEntry,
-} from "@director.run/utilities/schema";
+import { RegistryGetEntryByName, StoreGetAll } from "@/trpc/types";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { SimpleMarkdown } from "../ui/markdown";
 
 interface RegistryInstallFormProps {
-  mcp: RegistryEntry;
-  proxies: ProxyServerAttributes[];
+  mcp: RegistryGetEntryByName;
+  proxies: StoreGetAll;
 }
 
 export function RegistryInstallForm({
@@ -44,14 +41,14 @@ export function RegistryInstallForm({
         description: error.message,
       });
     },
-    onSuccess: (data) => {
-      utils.store.get.invalidate({ proxyId: data.id });
+    onSuccess: (data, variables) => {
+      utils.store.get.invalidate({ proxyId: variables.proxyId });
       utils.store.getAll.invalidate();
       toast({
         title: "Proxy installed",
         description: "This proxy was successfully installed.",
       });
-      router.push(`/${data.id}`);
+      router.push(`/${variables.proxyId}`);
     },
   });
 
@@ -96,11 +93,6 @@ export function RegistryInstallForm({
           server: {
             name: mcp.name,
             transport,
-            source: {
-              name: "registry",
-              entryId: mcp.id,
-              entryData: mcp,
-            },
           },
         });
       }}

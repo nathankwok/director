@@ -8,7 +8,7 @@ import {
   McpError,
   type Prompt,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { AbstractClient } from "../client/abstract-client";
+import type { AbstractClient } from "../../client/abstract-client";
 import type { ProxyServer } from "../proxy-server";
 
 const logger = getLogger("proxy/handlers/promptsHandler");
@@ -83,7 +83,7 @@ export function setupPromptHandlers(
             promptToClientMap.set(prompt.name, connectedClient);
             return {
               ...prompt,
-              description: `[${connectedClient.name}] ${prompt.description || ""}`,
+              description: prompt.description || "",
             };
           });
           allPrompts.push(...promptsWithSource);

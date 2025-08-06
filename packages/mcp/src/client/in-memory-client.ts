@@ -1,28 +1,27 @@
 import {} from "@director.run/utilities/error";
 import { getLogger } from "@director.run/utilities/logger";
-import {} from "@modelcontextprotocol/sdk/client/auth.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { AbstractClient, type SerializedClient } from "./abstract-client";
+import { AbstractClient, type AbstractClientParams } from "./abstract-client";
 
 const logger = getLogger("client/in-memory");
 
+export type InMemoryClientParams = AbstractClientParams & {
+  server: Server;
+};
+
 export class InMemoryClient extends AbstractClient {
-  private server: Server;
-  private serverTransport: InMemoryTransport;
-  private clientTransport: InMemoryTransport;
+  protected server: Server;
 
-  constructor(params: {
-    name: string;
-    server: Server;
-  }) {
-    const [clientTransport, serverTransport] =
-      InMemoryTransport.createLinkedPair();
-
-    super(params.name);
+  constructor(params: InMemoryClientParams) {
+    super({
+      name: params.name,
+      source: params.source,
+      toolPrefix: params.toolPrefix,
+      disabledTools: params.disabledTools,
+      disabled: params.disabled,
+    });
     this.server = params.server;
-    this.serverTransport = serverTransport;
-    this.clientTransport = clientTransport;
   }
 
   public static async createAndConnectToServer(
@@ -39,21 +38,22 @@ export class InMemoryClient extends AbstractClient {
   }
 
   public async connectToTarget({ throwOnError }: { throwOnError: boolean }) {
-    await Promise.all([
-      this.connect(this.clientTransport),
-      this.server.connect(this.serverTransport),
-    ]);
-    return true;
-  }
+    if (this._disabled) {
+      this.status = "disconnected";
+      return false;
+    }
 
-  public toPlainObject(): SerializedClient {
-    return {
-      name: this.name,
-      status: this.status,
-      lastConnectedAt: this.lastConnectedAt,
-      lastErrorMessage: this.lastErrorMessage,
-      command: "--",
-      type: "in-memory",
-    };
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+
+    await Promise.all([
+      this.connect(clientTransport),
+      this.server.connect(serverTransport),
+    ]);
+
+    this.status = "connected";
+    this.lastConnectedAt = new Date();
+    this.lastErrorMessage = undefined;
+    return true;
   }
 }

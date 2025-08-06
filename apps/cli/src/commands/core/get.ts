@@ -8,53 +8,119 @@ import {
   whiteBold,
 } from "@director.run/utilities/cli/colors";
 import { DirectorCommand } from "@director.run/utilities/cli/director-command";
-import { actionWithErrorHandler } from "@director.run/utilities/cli/index";
+import {
+  actionWithErrorHandler,
+  attributeTable,
+} from "@director.run/utilities/cli/index";
 import { makeTable } from "@director.run/utilities/cli/index";
 import { joinURL } from "@director.run/utilities/url";
 import { gatewayClient } from "../../client";
+import { subtitle } from "../../common";
 import { env } from "../../env";
+import { makeToolTable } from "../mcp/tools";
 
 export function registerGetCommand(program: DirectorCommand) {
   program
-    .command("get <proxyId>")
+    .command("get <proxyId> [serverName]")
     .description("Show proxy details")
     .action(
-      actionWithErrorHandler(async (proxyId: string) => {
-        const proxy = await gatewayClient.store.get.query({ proxyId });
+      actionWithErrorHandler(async (proxyId: string, serverName?: string) => {
+        if (serverName) {
+          const target = await gatewayClient.store.getServer.query({
+            proxyId,
+            serverName,
+            queryParams: { includeTools: true },
+          });
+          printTargetDetails(proxyId, target);
+        } else {
+          const proxy = await gatewayClient.store.get.query({
+            proxyId,
+            queryParams: { includeInMemoryTargets: true },
+          });
 
-        if (!proxy) {
-          console.error(`proxy ${proxyId} not found`);
-          return;
+          if (!proxy) {
+            console.error(`proxy ${proxyId} not found`);
+            return;
+          }
+
+          printProxyDetails(proxy);
         }
-
-        printProxyDetails(proxy);
       }),
     );
 }
 
-function printProxyDetails(proxy: GatewayRouterOutputs["store"]["get"]) {
-  const { id, name, description, addToolPrefix, path } = proxy;
+export function printTargetDetails(
+  proxyId: string,
+  target: GatewayRouterOutputs["store"]["getServer"],
+) {
+  const {
+    name,
+    status,
+    transport,
+    lastConnectedAt,
+    lastErrorMessage,
+    source,
+    toolPrefix,
+    disabledTools,
+    disabled,
+    tools,
+  } = target;
+
+  console.log();
+  console.log(whiteBold(`PROXIES > ${proxyId} > ${blue(name)}`));
+  console.log();
+
+  console.log(
+    attributeTable({
+      name,
+      status: targetStatus(status),
+      type: transport.type,
+      transport: JSON.stringify(transport, null, 2),
+      lastConnectedAt: lastConnectedAt?.toISOString() ?? "--",
+      lastErrorMessage: lastErrorMessage ?? "--",
+      sourceName: source?.name ?? "--",
+      sourceId: source?.entryId ?? "--",
+      toolPrefix: toolPrefix ?? "''",
+      disabledTools: disabledTools ?? "[]",
+      disabled: disabled ? "yes" : "no",
+    }),
+  );
+  console.log();
+
+  if (tools) {
+    console.log(subtitle(`tools`));
+    console.log();
+    console.log(makeToolTable(tools).toString());
+    console.log();
+  }
+}
+
+export function printProxyDetails(proxy: GatewayRouterOutputs["store"]["get"]) {
+  const { id, name, description } = proxy;
   console.log();
   console.log(whiteBold(`PROXIES > ${blue(name)}`));
   console.log();
 
-  const sseURL = joinURL(env.GATEWAY_URL, getSSEPathForProxy(proxy.id));
-  const streamableURL = joinURL(
-    env.GATEWAY_URL,
-    getStreamablePathForProxy(proxy.id),
+  console.log(
+    attributeTable({
+      id,
+      name,
+      description: description ?? "--",
+      streamableURL: joinURL(
+        env.GATEWAY_URL,
+        getStreamablePathForProxy(proxy.id),
+      ),
+      sseURL: joinURL(env.GATEWAY_URL, getSSEPathForProxy(proxy.id)),
+    }),
   );
 
-  console.log(`${whiteBold("id")} = ${id}`);
-  console.log(`${whiteBold("name")} = ${name}`);
-  console.log(`${whiteBold("description")} = ${description}`);
-  console.log(`${whiteBold("addToolPreix")} = ${addToolPrefix}`);
-  console.log(`${whiteBold("streamableUrl")} = ${streamableURL}`);
-  console.log(`${whiteBold("sseURL")} = ${sseURL}`);
+  console.log();
+  console.log(subtitle(`targets`));
+  console.log();
 
   const table = makeTable([
     "name",
     "type",
-    "url/command",
     "status",
     "lastConnectedAt",
     "lastErrorMessage",
@@ -62,14 +128,16 @@ function printProxyDetails(proxy: GatewayRouterOutputs["store"]["get"]) {
   table.push(
     ...proxy.targets.map((target) => [
       target.name,
-      target.type,
-      target.command,
-      target.status === "connected" ? green(target.status) : red(target.status),
+      target.transport.type,
+      targetStatus(target.status),
       target.lastConnectedAt?.toISOString() ?? "--",
       target.lastErrorMessage ?? "--",
     ]),
   );
-  console.log();
   console.log(table.toString());
   console.log();
+}
+
+function targetStatus(status: string) {
+  return status === "connected" ? green(status) : red(status);
 }

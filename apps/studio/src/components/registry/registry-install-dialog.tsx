@@ -18,17 +18,14 @@ import { toast } from "@/components/ui/toast";
 import { useRegistryQuery } from "@/hooks/use-registry-query";
 import { useZodForm } from "@/hooks/use-zod-form";
 import { trpc } from "@/trpc/client";
-import type {
-  ProxyServerAttributes,
-  RegistryEntry,
-} from "@director.run/utilities/schema";
+import { RegistryGetEntriesEntry, StoreGetAll } from "@/trpc/types";
 import { useRouter } from "next/navigation";
 import { ComponentProps } from "react";
 import { z } from "zod";
 
 interface RegistryInstallDialogProps extends ComponentProps<typeof Dialog> {
-  mcp: RegistryEntry;
-  proxies: ProxyServerAttributes[];
+  mcp: RegistryGetEntriesEntry;
+  proxies: StoreGetAll;
 }
 
 export function RegistryInstallDialog({
@@ -55,13 +52,13 @@ export function RegistryInstallDialog({
         description: error.message,
       });
     },
-    onSuccess: (data) => {
-      utils.store.get.invalidate({ proxyId: data.id });
+    onSuccess: (data, variables) => {
+      utils.store.get.invalidate({ proxyId: variables.proxyId });
       toast({
         title: "Proxy installed",
         description: "This proxy was successfully installed.",
       });
-      router.push(`/${data.id}`);
+      router.push(`/${variables.proxyId}`);
     },
   });
 
@@ -116,11 +113,6 @@ export function RegistryInstallDialog({
               server: {
                 name: mcp.name,
                 transport,
-                source: {
-                  name: "registry",
-                  entryId: mcp.id,
-                  entryData: mcp,
-                },
               },
             });
           }}

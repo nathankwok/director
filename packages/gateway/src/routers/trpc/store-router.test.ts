@@ -1,9 +1,11 @@
-import { TRPCClientError } from "@trpc/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { GatewayRouterOutputs } from "../../client";
 import { IntegrationTestHarness } from "../../test/integration";
 
-describe("Store Router", () => {
+describe("Installer Router", () => {
   let harness: IntegrationTestHarness;
+  let proxy: GatewayRouterOutputs["store"]["create"];
 
   beforeAll(async () => {
     harness = await IntegrationTestHarness.start();
@@ -13,170 +15,49 @@ describe("Store Router", () => {
     await harness.stop();
   });
 
-  it("should get all proxies", async () => {
+  beforeEach(async () => {
     await harness.purge();
-    await harness.client.store.create.mutate({
-      name: "Test proxy",
+    proxy = await harness.client.store.create.mutate({
+      name: "Test Proxy",
+      servers: [harness.getConfigForTarget("echo")],
     });
-    await harness.client.store.create.mutate({
-      name: "Test proxy 2",
-    });
-    const proxies = await harness.client.store.getAll.query();
-    expect(proxies).toHaveLength(2);
-
-    expect(proxies[0].id).toBe("test-proxy");
-    expect(proxies[1].id).toBe("test-proxy-2");
   });
 
-  it("should create a new proxy", async () => {
-    await harness.purge();
-    await harness.client.store.create.mutate({
-      name: "Test proxy",
-      description: "Test description",
-    });
-    const proxy = await harness.client.store.get.query({
-      proxyId: "test-proxy",
-    });
-    expect(proxy).toBeDefined();
-    expect(proxy?.id).toBe("test-proxy");
-    expect(proxy?.name).toBe("Test proxy");
-    expect(proxy?.description).toBe("Test description");
-  });
-
-  it("should update a proxy", async () => {
-    await harness.purge();
-    const prox = await harness.client.store.create.mutate({
-      name: "Test proxy",
-      description: "Old description",
-    });
-
-    const newDescription = "Updated description";
-
-    const updatedResponse = await harness.client.store.update.mutate({
-      proxyId: prox.id,
-      attributes: {
-        description: newDescription,
-      },
-    });
-    expect(updatedResponse.description).toBe(newDescription);
-
-    const proxy = await harness.client.store.get.query({
-      proxyId: "test-proxy",
-    });
-    expect(proxy?.description).toBe(newDescription);
-  });
-
-  it("should delete a proxy", async () => {
-    await harness.purge();
-    await harness.client.store.create.mutate({
-      name: "Test proxy",
-    });
-    await harness.client.store.delete.mutate({
-      proxyId: "test-proxy",
-    });
-
-    await expect(
-      harness.client.store.get.query({ proxyId: "test-proxy" }),
-    ).rejects.toThrowError(TRPCClientError);
-
-    expect(await harness.client.store.getAll.query()).toHaveLength(0);
-  });
-
-  describe("addServer", () => {
-    describe("oauth target", () => {
-      it("should succeed on adding an unauthorized client", async () => {
-        await harness.purge();
-        const testProxy = await harness.client.store.create.mutate({
-          name: "Test Proxy",
-          servers: [],
-        });
-
-        const target = await harness.client.store.addServer.mutate({
-          proxyId: testProxy.id,
-          server: {
-            name: "notion",
-            transport: {
-              type: "http",
-              url: `https://mcp.notion.com/mcp`,
-            },
-          },
-        });
-
-        expect(target.targets[0].status).toBe("unauthorized");
-        expect(target.targets[0].command).toBe("https://mcp.notion.com/mcp");
-        expect(target.targets[0].type).toBe("http");
+  describe("get", () => {
+    it("should not return in memory targets by default", async () => {
+      const ret = await harness.client.store.get.query({
+        proxyId: proxy.id,
       });
-    });
-
-    it("should fail if it can't connect a url", async () => {
-      await harness.purge();
-      const testProxy = await harness.client.store.create.mutate({
-        name: "Test Proxy",
-        servers: [],
-      });
-
-      await expect(
-        harness.client.store.addServer.mutate({
-          proxyId: testProxy.id,
-          server: {
-            name: "echo",
-            transport: {
-              type: "http",
-              url: `http://localhost/not_existing_server`,
-            },
-          },
-        }),
-      ).rejects.toThrow(
-        `[echo] failed to connect to http://localhost/not_existing_server`,
+      expect(ret.targets).toHaveLength(1); // Only echo server, prompt manager is filtered out
+      expect(ret.targets).not.toContainEqual(
+        expect.objectContaining({ name: "__prompts__" }),
       );
     });
-
-    it("should fail if it can't connect to stdio", async () => {
-      await harness.purge();
-      const testProxy = await harness.client.store.create.mutate({
-        name: "Test Proxy",
-        servers: [],
+    it("should return in memory targets when includeInMemoryTargets is true", async () => {
+      const ret = await harness.client.store.get.query({
+        proxyId: proxy.id,
+        queryParams: { includeInMemoryTargets: true },
       });
-
-      await expect(
-        harness.client.store.addServer.mutate({
-          proxyId: testProxy.id,
-          server: {
-            name: "echo",
-            transport: {
-              type: "stdio",
-              command: "not_existing_command",
-              args: [],
-            },
-          },
-        }),
-      ).rejects.toThrow(
-        `[echo] command not found: 'not_existing_command'. Please make sure it is installed and available in your $PATH.`,
+      expect(ret.targets).toHaveLength(2);
+      expect(ret.targets).toContainEqual(
+        expect.objectContaining({ name: "__prompts__" }),
       );
     });
+  });
+  describe("callTool", () => {
+    it("should call a tool", async () => {
+      const result = (await harness.client.store.callTool.mutate({
+        proxyId: proxy.id,
+        serverName: "echo",
+        toolName: "echo",
+        arguments: {
+          message: "hello",
+        },
+      })) as CallToolResult;
 
-    it("should bubble up command errors properly", async () => {
-      await harness.purge();
-      const testProxy = await harness.client.store.create.mutate({
-        name: "Test Proxy",
-        servers: [],
+      expect(JSON.parse(result?.content?.[0]?.text as string)).toEqual({
+        message: "hello",
       });
-
-      await expect(
-        harness.client.store.addServer.mutate({
-          proxyId: testProxy.id,
-          server: {
-            name: "echo",
-            transport: {
-              type: "stdio",
-              command: "ls",
-              args: ["not_existing_dir"],
-            },
-          },
-        }),
-      ).rejects.toThrow(
-        `[echo] failed to run 'ls not_existing_dir'. Please check the logs for more details.`,
-      );
     });
   });
 });
